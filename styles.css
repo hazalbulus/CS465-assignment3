@@ -1,97 +1,128 @@
 body {
-    background-color: rgb(227, 181, 221);
+  font-family: "Roboto", sans-serif;
+  background-color: #f5f7fa;
+  color: #333;
+  line-height: 1.6;
 }
 
-.flexcont{
-    display:flex;
+.flexcont {
+  display: flex;
+  gap: 2rem;
 }
 
-.canv-div{
-    flex: 1;
+.canv-div {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.rhs{
-    flex:2;
-    height: 1000px;
-    margin-left: 3%;
-    overflow-x: hidden;
+.rhs {
+  background-color: #fff;
+  padding: 2rem;
+  border: 1px solid #ddd;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-.button-container{
-    display:flex;
+.button-container {
+  display: flex;
 }
 
-.buttonCont{
-    flex:1;
+.buttonCont {
+  flex: 1;
 }
 
-.tts{
-    color: rgb(204, 78, 6);
-    font-size: 24px;
+.tts {
+  font-size: 1.25rem;
+  color: #007bff;
+  margin-bottom: 1rem;
+  display: block;
 }
 
-.sliderTag{
-    color: #fdd504;
-    font-size: 20px;
-    padding-right:20px;
+.sliderTag {
+  color: #fdd504;
+  font-size: 20px;
+  padding-right: 20px;
 }
 
-.sliderRange{
-    color: rgb(204, 78, 6);
-    font-size: 18px;
+.sliderRange {
+  color: rgb(204, 78, 6);
+  font-size: 18px;
 }
 
-.rangeSld{
-    width: 45%;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    background: #fcfcfc;
-    outline: none;
-    height: 8px;
-    border-radius: 20%;
+.rangeSld {
+  width: 45%;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: #fcfcfc;
+  outline: none;
+  height: 8px;
+  border-radius: 20%;
 }
 
-.rangeSld::-webkit-slider-thumb{
-    -webkit-appearance: none;
-    background: #fdd504;
-    cursor: pointer;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
+.rangeSld::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  background: #fdd504;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
 }
 
-.btn{
-    border-radius: 10%; 
-    background-color: #7c837c; 
-    width:180px; 
-    padding: 10px 25px; 
-    margin-top: 10px;
-    margin-bottom: 20px;
-    margin-right: 7px;
-    cursor: pointer;
+.btn {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  border-radius: 0.3rem;
+  transition: background-color 0.3s ease;
 }
 
-.radio{
-    margin-bottom: 10px; 
+.btn:hover {
+  background-color: #0056b3;
 }
 
-.radio-input{
-    transform: scale(2);
-    color: rgb(204, 78, 6); 
+.radio {
+  margin-bottom: 10px;
 }
 
-.radio-label{
-    margin-left: 10px;
-    color: rgb(17, 0, 114);
-    font-size: 24px;
+.radio-input {
+  transform: scale(2);
+  color: rgb(204, 78, 6);
 }
 
-input[type=number] {
-    width: 30%;
-    padding: 12px 20px;
-    margin-right: 10px;
-    box-sizing: border-box;
-  }
-  .slider-container, .render-type-container, .light-pos-container {
-    margin-bottom: 15px;
+.radio-label {
+  margin-left: 10px;
+  color: rgb(17, 0, 114);
+  font-size: 24px;
+}
+
+input[type="number"] {
+  width: 30%;
+  padding: 12px 20px;
+  margin-right: 10px;
+  box-sizing: border-box;
+}
+
+input[type="range"] {
+  width: 100%;
+  margin: 1rem 0;
+}
+
+input[type="radio"] {
+  accent-color: #007bff;
+}
+
+.slider-container,
+.render-type-container,
+.light-pos-container {
+  margin-bottom: 15px;
+}
+
+/* Utility Classes */
+.mt-1 {
+  margin-top: 1rem;
+}
+.mb-1 {
+  margin-bottom: 1rem;
 }
