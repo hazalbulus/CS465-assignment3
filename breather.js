@@ -1,351 +1,406 @@
-var gl;
-var program;
-
-var pointsArray = [];
-var points = [];
-
-var fColor;
-
-var near = -20;
-var far = 20;
-var radius = 6.0;
-var theta  = 0.0;
-var phi    = 0.0;
-var dr = 1.0 * Math.PI/180.0;
-
-const black = vec4(0.0, 0.0, 1.0, 1.0);
-const red = vec4(1.0, 0.0, 0.0, 1.0);
-
-const at = vec3(0.0, 0.0, 0.0);
-const up = vec3(0.0, 1.0, 0.0);
-
-var left = -11.0;
-var right = 11.0;
-var ytop = 11.0;
-var bottom = -11.0;
-
-var fixedDist = 11.0;
-var torusRadius = 0.5;
-
-var normalsArray = [];
-var modeViewMatrix, projectionMatrix;
-var modelViewMatrixLoc, projectionMatrixLoc;
-var normalMatrix, normalMatrixLoc;
-
-var LX = 10.0;
-var LY = 0.0;
-var LZ = 0.0;
-
-var lightPosition = vec4(LX, LY, LZ, 1.0 );
-var lightAmbient = vec4(0.2, 0.2, 0.2, 1.0 );
-var lightDiffuse = vec4( 0.7, 0.7, 0.7, 1.0 );
-var lightSpecular = vec4( 0.5, 0.5, 0.5, 1.0 );
-
-var materialAmbient = vec4( 0.0, 0.0, 0.0, 1.0 );
-var materialDiffuse = vec4( 1.0, 0.8, 0.0, 1.0 );
-var materialSpecular = vec4( 1.0, 1.0, 1.0, 1.0 );
-var materialShininess = 80.0;
-
-var ambientProduct; 
-var diffuseProduct; 
-var specularProduct;
-var modelViewMatrix; 
-
-var ambientColor, diffuseColor, specularColor;
-var shading = 1;
-var nBuffer;
-var phongNormalsArr = [];
-var pointsHor = [];
-
-var qValue = 5;
-var pValue = 3;
-var zCoeff = 0.35;
-var zSin = 10;
-var torusSize = 4;
-var param1 = 0.5; // 0.5 inner curve
-var param2 = 0.75; // 0.75 outer curve 
-
-var texSize = 256;
-
-var image1 = new Array()
-    for (var i =0; i<texSize; i++)  image1[i] = new Array();
-    for (var i =0; i<texSize; i++) 
-        for ( var j = 0; j < texSize; j++) 
-           image1[i][j] = new Float32Array(4);
-    for (var i =0; i<texSize; i++) for (var j=0; j<texSize; j++) {
-        var c = (((i & 0x8) == 0) ^ ((j & 0x8)  == 0));
-        image1[i][j] = [c, c, c, 1];
-    }
-
-var image2 = new Uint8Array(4*texSize*texSize);
-    for ( var i = 0; i < texSize; i++ ) 
-        for ( var j = 0; j < texSize; j++ ) 
-           for(var k =0; k<4; k++) 
-                image2[4*texSize*i+4*j+k] = 255*image1[i][j][k];
-
-
-     
-var texCoordsArray = [];
-var texCoord = [
-    vec2(0, 0),
-    vec2(0.25, 0),
-    vec2(0.25, 0.25),
-    vec2(0, 0.25)
-];
-var tangent = vec3(1.0, 0.0, 0.0);
+    let canvas;
+    let gl;
+    let program;
+    let shape_type = 0;
+    let selectedTexture = 0;
+    const cameraSpeed = 2;
+    let wireMode = 0;
+    let magnitude = 0.5;
+    
+    const line_count = 50;
+    
+    let radius = 160;
+    let xRot = 110;
+    let yRot = 180;
+    let zRot = 0;
+    let R = 2.5;
+    
+    let viewMatrix;
+    let projectionMatrix;
+    
+    let rotationMode = true;
+    let rotAngle = 0;
         
-function configureTexture( image ) {
-    texture = gl.createTexture();
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, texSize, texSize, 0, gl.RGB, gl.UNSIGNED_BYTE, image);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, 
-                      gl.NEAREST_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-}
+    let aa = 0.5;
+    let uMin = -14, uMax = 14;
+    let vMin = -37.4, vMax = 37.4;
+    
 
-function quad(  a,  b,  c,  d ) {
-    pointsArray.push(a); 
-    pointsArray.push(b); 
-    pointsArray.push(c);
-    pointsArray.push(a); 
-    pointsArray.push(c); 
-    pointsArray.push(d); 
-
-    var t1 = subtract(b, a);
-    var t2 = subtract(c, a);
-    var normal = normalize(cross(t2, t1));
-    normal = vec4(normal);
-    normalsArray.push(normal);
-    normalsArray.push(normal);
-    normalsArray.push(normal);
-    t1 = subtract(c, a);
-    t2 = subtract(d, a);
-    normal = normalize(cross(t2, t1));
-    normal = vec4(normal);
-    normalsArray.push(normal);
-    normalsArray.push(normal);
-    normalsArray.push(normal);
-
-    phongNormalsArr.push(vec4(a[0],a[1], a[2], 0.0));
-    phongNormalsArr.push(vec4(b[0],b[1], b[2], 0.0));
-    phongNormalsArr.push(vec4(c[0],c[1], c[2], 0.0));
-    phongNormalsArr.push(vec4(a[0],a[1], a[2], 0.0));
-    phongNormalsArr.push(vec4(c[0],c[1], c[2], 0.0));
-    phongNormalsArr.push(vec4(d[0],d[1], d[2], 0.0));
-
-    texCoordsArray.push(texCoord[0]);
-    texCoordsArray.push(texCoord[1]);
-    texCoordsArray.push(texCoord[2]);
-    texCoordsArray.push(texCoord[0]);
-    texCoordsArray.push(texCoord[2]);
-    texCoordsArray.push(texCoord[3]);
-}
-
-function handleRBChange(src){
-    shading = src.id;
-    console.log(shading);
-    if(shading == 2){
-        program = chooseProgram("vertex-shader-gouraud", "fragment-shader-gouraud");
-        gl.bindBuffer( gl.ARRAY_BUFFER, nBuffer);
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(normalsArray), gl.STATIC_DRAW );
+    // scale in MV does not work
+    function scale4(a, b, c) {
+        const result = mat4();
+        result[0][0] = a;
+        result[1][1] = b;
+        result[2][2] = c;
+        return result;
     }
-    else if(shading == 3){
-        program = chooseProgram("vertex-shader-phong", "fragment-shader-phong");
-        gl.bindBuffer( gl.ARRAY_BUFFER, nBuffer);
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(phongNormalsArr), gl.STATIC_DRAW );
+    // Checks if the given value is power of 2
+    function isPowerOf2(value) {
+        return (value & (value - 1)) == 0;
     }
+
+    // Breather surface equations
+function breatherX(u, v, a) {
+    const w = Math.sqrt(1 - a * a);
+    const denom = a * (Math.pow(w * Math.cosh(a * u), 2) + Math.pow(a * Math.sin(w * v), 2));
+    return -u + (2 * (1 - a * a) * Math.cosh(a * u) * Math.sinh(a * u)) / denom;
 }
 
-window.onload = function init()
-{
-    var canvas = document.getElementById( "gl-canvas" );
+function breatherY(u, v, a) {
+    const w = Math.sqrt(1 - a * a);
+    const denom = a * (Math.pow(w * Math.cosh(a * u), 2) + Math.pow(a * Math.sin(w * v), 2));
+    return (2 * w * Math.cosh(a * u) * (-w * Math.cos(v) * Math.cos(w * v) - Math.sin(v) * Math.sin(w * v))) / denom;
+}
+
+function breatherZ(u, v, a) {
+    const w = Math.sqrt(1 - a * a);
+    const denom = a * (Math.pow(w * Math.cosh(a * u), 2) + Math.pow(a * Math.sin(w * v), 2));
+    return (2 * w * Math.cosh(a * u) * (-w * Math.sin(v) * Math.cos(w * v) + Math.cos(v) * Math.sin(w * v))) / denom;
+}
+
+
+    // Calculation of distance between two point
+    function distance(p1, p2) {
+        return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2) + Math.pow(p1[2] - p2[2], 2));
+    }
     
-    gl = WebGLUtils.setupWebGL( canvas );
-    if ( !gl ) { alert( "WebGL isn't available" ); }
-
-    gl.viewport( 0, 0, canvas.width, canvas.height );
+    window.onload = function() {
+        canvas = document.getElementById('render-surface');
+        gl = canvas.getContext('webgl');
     
-    gl.clearColor( 1.0, 1.0, 1.0, 1.0 );
+        if (!gl) gl = canvas.getContext('experimental-webgl');
+        if (!gl) return alert("Your browser does not support WEBGL");
     
+        program = initShaders(gl, 'vertexShader', 'fragmentShader');
+        gl.useProgram(program);
+    
+        gl.bindTexture(gl.TEXTURE_2D, texture(gl, 'erdem'));
+        gl.activeTexture(gl.TEXTURE0);
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
+        gl.frontFace(gl.CCW);
+        gl.cullFace(gl.BACK);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(0, 0, 0, 1.0);
+    
+        //Camera controls
+        document.onkeydown = function(event) {
+            switch (event.keyCode) {
+                // W
+                case 87:
+                    xRot += cameraSpeed;
+                    break;
+                // S
+                case 83:
+                    xRot -= cameraSpeed;
+                    break;
+                // UP
+                case 38:
+                    event.preventDefault();
+                    radius -= cameraSpeed;
+                    break;
+                // DOWN
+                case 40:
+                    event.preventDefault();
+                    radius += cameraSpeed;
+                    break;
+            }
+        };
+        //Checkbox for Texture Mode
+        let checkbox = document.getElementById("checkbox");
+        checkbox.addEventListener( 'change', function() {
+            if(this.checked) 
+            {
+                wireMode = 1;
+            } 
+            else 
+            {
+                wireMode = 0;
+            }
+        });
+        
+        //Texture selector
+        let textureSelector = document.getElementById("textureSelector");
+        textureSelector.addEventListener("click", function() {
+            selectedTexture = textureSelector.selectedIndex;
+            if (selectedTexture == 0){
+                gl.bindTexture(gl.TEXTURE_2D, texture(gl, 'erdem'));
+                gl.activeTexture(gl.TEXTURE0);
+            }
+            else if (selectedTexture == 1){
+                gl.bindTexture(gl.TEXTURE_2D, texture(gl, 'aytek'));
+                gl.activeTexture(gl.TEXTURE0);
+            }
+            else if (selectedTexture == 2){
+                gl.bindTexture(gl.TEXTURE_2D, texture(gl, 'mustafa'));
+                gl.activeTexture(gl.TEXTURE0);
+            }
+            });
+    
+        //Controls rotation
+        document.getElementById('toggleRotation').onclick = function() {
+            rotationMode = !rotationMode;
+        };
 
-    gl.enable(gl.DEPTH_TEST);
-    //gl.enable(gl.BLEND);
-    gl.depthFunc(gl.LEQUAL);
-    gl.enable(gl.POLYGON_OFFSET_FILL);
-    gl.polygonOffset(1.0, 2.0);
+    
+        //Controls aa
+        document.getElementById('aa').oninput = function() {
+            aa = document.getElementById('aa').value;
+        };
+    
+        
+        // Update the Breather surface whenever a slider value changes
+        document.getElementById('u-range').oninput = function() {
+            uMin = document.getElementById('u-range').min;
+            uMax = document.getElementById('u-range').max;
+        };
+        
+        document.getElementById('v-range').oninput = function(event) {
+            vMin = document.getElementById('v-range').min;
+            vMax = document.getElementById('v-range').max;
+     
+        };	
+        //Controls magnitude
+        document.getElementById('magnitude').oninput = function() {
+            magnitude = document.getElementById('magnitude').value;
+        };
+        //Controls R
 
-    calculateBreatherSurface();
-
-    ambientProduct = mult(lightAmbient, materialAmbient);
-    diffuseProduct = mult(lightDiffuse, materialDiffuse);
-    specularProduct = mult(lightSpecular, materialSpecular);
-    modelViewMatrix = mat4();
-
-    program = chooseProgram("vertex-shader-gouraud", "fragment-shader-gouraud" );
-
-   
-// buttons for moving viewer and changing size
-    //aa-slider
-    document.getElementById("aa-slider").onchange = function() {
-        var val = event.srcElement.value;
-        qValue = val;
-        refreshBreatherSurface();
+    
+        render();
     };
-    //u-slider
-    document.getElementById("u-range-slider").onchange = function() {
-        var val = event.srcElement.value;
-        pValue = val;
-        refreshBreatherSurface();
-    };
-   
-    document.getElementById("zoom-slider").onchange = function() {
-        var val = event.srcElement.value;
-        left = -val * fixedDist;
-        right = val * fixedDist;
-        ytop = val * fixedDist;
-        bottom = -val * fixedDist;
-        console.log(left + " " +right+ " " +ytop + " " + bottom);
-    };
-
- 
-
-    render();
-}
-
-
-function render()
-{
-    gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
-    eye = vec3(radius*Math.sin(phi), radius*Math.sin(theta), 
-    radius*Math.cos(phi));
+    function render() {
+        gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);
+        viewMatrix = createViewMatrix(radius, xRot, yRot, zRot);
+        projectionMatrix = perspective(radians(110), canvas.width / canvas.height, 0.1, 1000000.0);
+
     
-    modelViewMatrix = lookAt( eye, at, up );
-    projectionMatrix = ortho( left, right, bottom, ytop, near, far );
+        let breatherData = breatherSurface(line_count, line_count, aa);
+    let shape = new Mesh(breatherData);
+    shape.setScale(magnitude);
+    shape.setRotation(0, 180, rotAngle);
+    shape.setWireMode(wireMode);
+    shape.render(gl, program, viewMatrix, projectionMatrix);
     
-    normalMatrix = [
-        vec3(modelViewMatrix[0][0], modelViewMatrix[0][1], modelViewMatrix[0][2]),
-        vec3(modelViewMatrix[1][0], modelViewMatrix[1][1], modelViewMatrix[1][2]),
-        vec3(modelViewMatrix[2][0], modelViewMatrix[2][1], modelViewMatrix[2][2])
-    ];
-
-    gl.uniformMatrix4fv( modelViewMatrixLoc, false, flatten(modelViewMatrix) );
-    gl.uniformMatrix4fv( projectionMatrixLoc, false, flatten(projectionMatrix) );
-    gl.uniformMatrix3fv( normalMatrixLoc, false, flatten(normalMatrix) );
+        if (rotationMode) rotAngle += 0.5;
+        requestAnimationFrame(render);
+    }
     
-    if(shading == 1){
-        gl.uniform4fv(fColor, flatten(red));
-        gl.drawArrays( gl.LINE_LOOP, 360*12*6 , 360*12 + 360*12 );
-    }else{
-        gl.uniform4fv(fColor, flatten(black));
-        gl.drawArrays( gl.TRIANGLES, 0, 360*12*6 );
+    function createViewMatrix(radius, xRot, yRot, zRot) {
+        let viewMatrix = mat4();
+        viewMatrix = lookAt(vec3(0, 0, radius), vec3(0, 0, 0), vec3(0, 1, 0));
+        viewMatrix = mult(viewMatrix, rotate(xRot, vec3(1, 0, 0)));
+        viewMatrix = mult(viewMatrix, rotate(yRot, vec3(0, 1, 0)));
+        viewMatrix = mult(viewMatrix, rotate(zRot, vec3(0, 0, 1)));
+        return viewMatrix;
     }
-    requestAnimFrame(render);
-}
-
-function chooseProgram(vertexShad, fragShad){
-    program = initShaders( gl, vertexShad, fragShad );
-    gl.useProgram( program );
-
-    var vBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, vBuffer );
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(pointsArray.concat(points.concat(pointsHor))), gl.STATIC_DRAW);
     
-    var vPosition = gl.getAttribLocation( program, "vPosition" );
-    gl.vertexAttribPointer( vPosition, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vPosition );
+    // Setups texture
+    function texture(gl, name) {
+        let ext = gl.getExtension('MOZ_EXT_texture_filter_anisotropic');
+        if (!ext) ext = gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic');
     
-    nBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, nBuffer);
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(phongNormalsArr), gl.STATIC_DRAW );
-
-    var vNormal = gl.getAttribLocation( program, "vNormal" );
-    gl.vertexAttribPointer( vNormal, 4, gl.FLOAT, false, 0, 0 );
-    gl.enableVertexAttribArray( vNormal);
-
-    fColor = gl.getUniformLocation(program, "vColor");
-
-    var tBuffer = gl.createBuffer();
-    gl.bindBuffer( gl.ARRAY_BUFFER, tBuffer);
-    gl.bufferData( gl.ARRAY_BUFFER, flatten(texCoordsArray), gl.STATIC_DRAW);
-
-    var vTexCoord = gl.getAttribLocation( program, "vTexCoord");
-    gl.vertexAttribPointer( vTexCoord, 2, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vTexCoord);
-
-    configureTexture(image2);
- 
-    modelViewMatrixLoc = gl.getUniformLocation( program, "modelViewMatrix" );
-    projectionMatrixLoc = gl.getUniformLocation( program, "projectionMatrix" );
-    normalMatrixLoc = gl.getUniformLocation( program, "normalMatrix" );
-
-    gl.uniform4fv( gl.getUniformLocation(program, 
-        "ambientProduct"),flatten(ambientProduct) );
-    gl.uniform4fv( gl.getUniformLocation(program, 
-        "diffuseProduct"),flatten(diffuseProduct) );
-    gl.uniform4fv( gl.getUniformLocation(program, 
-        "specularProduct"),flatten(specularProduct) );	
-    gl.uniform4fv( gl.getUniformLocation(program, 
-        "lightPosition"),flatten(lightPosition) );
-    gl.uniform1f( gl.getUniformLocation(program, 
-        "shininess"),materialShininess );
-
-    gl.uniform3fv( gl.getUniformLocation(program, "objTangent"),flatten(tangent));   
-    render();
-    return program;
-}
-
-function calculateBreatherSurface(){
-    var prev_arr = Array.from(Array(360), () => Array(360).fill(0));
-    var aa = 0.9; // for example
-    for(var u=0; u<360; u+=1) {
-        for(var v = 0; v < 360; v+=30){
-            var w = Math.sqrt(1 - aa * aa);
-            var denom = aa * (Math.pow(w * Math.cosh(aa * u), 2) + Math.pow(aa * Math.sin(w * v), 2));
-
-            var x = -u + (2 * (1 - aa * aa) * Math.cosh(aa * u) * Math.sinh(aa * u)) / denom;
-            var y = (2 * w * Math.cosh(aa * u) * (-w * Math.cos(v) * Math.cos(w * v) - Math.sin(v) * Math.sin(w * v))) / denom;
-            var z = (2 * w * Math.cosh(aa * u) * (-w * Math.sin(v) * Math.cos(w * v) + Math.cos(v) * Math.sin(w * v))) / denom;
-
-            prev_arr[u][v] = vec4(x, y, z, 1.0);
-            points.push( vec4(x, y, z, 1.0)); 
-        } 
+        const image = document.getElementById(name);
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+        if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, 8);
+    
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        if (isPowerOf2(image.width) && isPowerOf2(image.height)) gl.generateMipmap(gl.TEXTURE_2D);
+        else {
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    
+        return t;
     }
-    for(var i=0; i<360; i+=1) {
-        for(var j = 0; j < 360; j+=30){
-            quad(prev_arr[i][j], prev_arr[i][(j+30)%360], prev_arr[(i+1)%360][(j+30)%360], prev_arr[(i+1)%360][j]);
-        } 
+    
+    
+    function breatherSurface(N, M, aa) {
+        let vertices = [];
+        let normals = [];
+        let textureCoords = [];
+        let delta = 0.0001;
+        
+        // Constants for the parametric equations
+        let wsqr = 1 - aa * aa;
+        let w = Math.sqrt(wsqr);
+        
+        let uStep = (uMax - uMin) / N;
+        let vStep = (vMax - vMin) / M;
+    
+        for (let i = 0; i <= N; i++) {
+            let u = uMin + i * uStep;
+            for (let j = 0; j <= M; j++) {
+                let v = vMin + j * vStep;
+                
+                // Calculate the denominators
+                let denom = aa * (Math.pow(w * Math.cosh(aa * u), 2) + Math.pow(aa * Math.sin(w * v), 2));
+                
+                // Calculate the positions using the parametric equations
+                let x = -u + (2 * wsqr * Math.cosh(aa * u) * Math.sinh(aa * u) / denom);
+                let y = 2 * w * Math.cosh(aa * u) * (-w * Math.cos(v) * Math.cos(w * v) - Math.sin(v) * Math.sin(w * v)) / denom;
+                let z = 2 * w * Math.cosh(aa * u) * (-w * Math.sin(v) * Math.cos(w * v) + Math.cos(v) * Math.sin(w * v)) / denom;
+                
+                // Push the positions to the vertices array
+                vertices.push(x, y, z);
+                
+                // Calculate normals using a numerical approach (central difference)
+                let x_u = breatherX(u + delta, v, aa) - breatherX(u - delta, v, aa);
+                let y_u = breatherY(u + delta, v, aa) - breatherY(u - delta, v, aa);
+                let z_u = breatherZ(u + delta, v, aa) - breatherZ(u - delta, v, aa);
+                let x_v = breatherX(u, v + delta, aa) - breatherX(u, v - delta, aa);
+                let y_v = breatherY(u, v + delta, aa) - breatherY(u, v - delta, aa);
+                let z_v = breatherZ(u, v + delta, aa) - breatherZ(u, v - delta, aa);
+                
+                let normalX = y_u * z_v - z_u * y_v;
+                let normalY = z_u * x_v - x_u * z_v;
+                let normalZ = x_u * y_v - y_u * x_v;
+                
+                let length = Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
+                normals.push(normalX / length, normalY / length, normalZ / length);
+                
+                // Push texture coordinates (u and v scaled to [0, 1] range)
+                textureCoords.push(i / N, j / M);
+            }
+            
+        }
+        
+        return [vertices, textureCoords, normals];
     }
-    for(var j=0; j<360; j += 30) {
-        for(var i = 0; i < 360; i ++){
-            pointsHor.push(prev_arr[i][j]);
-        } 
+    
+    
+    // Mesh object
+    class Mesh {
+        constructor(data) {
+            this.vertices = data[0];
+            this.texCoords = data[1];
+            this.normals = data[2];
+    
+            this.translation = vec3(0, 0, 0);
+            this.rotation = vec3(0, 0, 0);
+            this.scale = 1;
+    
+            this.wireMode = 0;
+        }
+    
+        prepareModel(gl, program, viewMatrix, projectionMatrix) {
+            gl.useProgram(program);
+    
+            let positionAttribLocation = gl.getAttribLocation(program, 'vPosition');
+            let texCoordAttribLocation = gl.getAttribLocation(program, 'vTexCoord');
+            let normalAttribLocation = gl.getAttribLocation(program, 'vNormal');
+    
+            this.vBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertices), gl.STATIC_DRAW);
+    
+            this.tBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.texCoords), gl.STATIC_DRAW);
+    
+            this.nBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.normals), gl.STATIC_DRAW);
+    
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
+            gl.vertexAttribPointer(positionAttribLocation, 3, gl.FLOAT, gl.FALSE, 3 * Float32Array.BYTES_PER_ELEMENT, 0);
+            gl.enableVertexAttribArray(positionAttribLocation);
+    
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
+            gl.vertexAttribPointer(texCoordAttribLocation, 2, gl.FLOAT, gl.FALSE, 2 * Float32Array.BYTES_PER_ELEMENT, 0);
+            gl.enableVertexAttribArray(texCoordAttribLocation);
+    
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
+            gl.vertexAttribPointer(normalAttribLocation, 3, gl.FLOAT, gl.TRUE, 3 * Float32Array.BYTES_PER_ELEMENT, 0);
+            gl.enableVertexAttribArray(normalAttribLocation);
+    
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'modelMatrix'), gl.FALSE, flatten(this.createTranformationMatrix()));
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'viewMatrix'), gl.FALSE, flatten(viewMatrix));
+            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'projectionMatrix'), gl.FALSE, flatten(projectionMatrix));
+    
+            gl.uniform1f(gl.getUniformLocation(program, 'wireMode'), this.wireMode);
+    
+            // Organize cordinates for texture drawing
+            this.triangleStrip = null;
+            this.triangleStrip = new Uint16Array(line_count * (2 * (line_count + 1) + 2) - 2);
+            let n = 0;
+            for (let i = 0; i < line_count; i++) {
+                for (let j = 0; j <= line_count; j++) {
+                    this.triangleStrip[n++] = (i + 1) * (line_count + 1) + j;
+                    this.triangleStrip[n++] = i * (line_count + 1) + j;
+                }
+            }
+    
+            // Organize cordinates for wireframe
+            if (this.wireMode == 0){
+                let lines = [];
+                lines.push(this.triangleStrip[0], this.triangleStrip[1]);
+                let numStripIndices = this.triangleStrip.length;
+                
+                for (let i = 2; i < numStripIndices; i++) {
+                    let a = this.triangleStrip[i - 2];
+                    let b = this.triangleStrip[i - 1];
+                    let c = this.triangleStrip[i];
+        
+                    if (a != b && b != c && c != a) lines.push(a, c, b, c);
+                }
+        
+                this.wireframe = new Uint16Array(lines);
+            }
+            
+    
+            this.triangleStripBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.triangleStripBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.triangleStrip, gl.STATIC_DRAW);
+    
+            this.linebuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.linebuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.wireframe, gl.STATIC_DRAW);
+        }
+    
+        createTranformationMatrix() {
+            let matrix = mat4();
+            matrix = mult(matrix, translate(this.translation[0], this.translation[1], this.translation[2]));
+            matrix = mult(matrix, rotate(this.rotation[0], vec3(1, 0, 0)));
+            matrix = mult(matrix, rotate(this.rotation[1], vec3(0, 1, 0)));
+            matrix = mult(matrix, rotate(this.rotation[2], vec3(0, 0, 1)));
+    
+            matrix = mult(matrix, scale4(this.scale, this.scale, this.scale));
+            return matrix;
+        }
+        //Render function of the mesh object
+        render(gl, program, viewMatrix, projectionMatrix) {
+            this.prepareModel(gl, program, viewMatrix, projectionMatrix);
+    
+            if (this.wireMode == 0) {
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.linebuffer);
+                gl.drawElements(gl.LINES, this.wireframe.length, gl.UNSIGNED_SHORT, 0);
+            } 
+            else 
+            {
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.triangleStripBuffer);
+                gl.drawElements(gl.TRIANGLE_STRIP, this.triangleStrip.length, gl.UNSIGNED_SHORT, 0);
+            }
+            
+        }
+    
+        setRotation(x, y, z) {
+            this.rotation = vec3(x, y, z);
+        }
+    
+        setScale(s) {
+            this.scale = s;
+        }
+    
+        setWireMode(mode) {
+            this.wireMode = mode;
+        }
     }
-}
-
-function refreshBreatherSurface(){
-    clearArrays();
-    calculateBreatherSurface();
-    if(shading == 2){
-        program = chooseProgram("vertex-shader-gouraud", "fragment-shader-gouraud");
-        gl.bindBuffer( gl.ARRAY_BUFFER, nBuffer);
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(normalsArray), gl.STATIC_DRAW );
-    }
-    else{
-        program = chooseProgram("vertex-shader-phong", "fragment-shader-phong");
-        gl.bindBuffer( gl.ARRAY_BUFFER, nBuffer);
-        gl.bufferData( gl.ARRAY_BUFFER, flatten(phongNormalsArr), gl.STATIC_DRAW );
-    }
-}
-
-function clearArrays(){
-    points = [];
-    pointsHor = [];
-    pointsArray = [];
-    normalsArray = [];
-    phongNormalsArr = [];
-    texCoordsArray = [];
-}
+    
+    
