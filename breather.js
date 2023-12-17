@@ -1,7 +1,6 @@
 let canvas;
 let gl;
 let program;
-let selectedTexture = 0;
 const cameraSpeed = 2;
 let wireMode = 0;
 let magnitude = 0.5;
@@ -14,6 +13,9 @@ let vMin = -14,
 let uMin = -37.4,
   uMax = 37.4;
 
+var theta = 0.0;
+var phi = 0.0;
+
 const line_count = 100;
 let radius = 160;
 let xRot = 110;
@@ -22,7 +24,58 @@ let zRot = 0;
 let rotationMode = true;
 let rotAngle = 0;
 let viewMatrix;
-let projectionMatrix;
+
+var wireframeProgram;
+var gouraudProgram;
+var phongProgram;
+var activeProgram;
+
+const at = vec3(0.0, 0.0, 0.0);
+const up = vec3(0.0, 1.0, 0.0);
+
+var LX = 10.0;
+var LY = 0.0;
+var LZ = 0.0;
+
+var lightPosition = vec4(LX, LY, LZ, 1.0);
+var lightAmbient = vec4(0.2, 0.2, 0.2, 1.0);
+var lightDiffuse = vec4(0.7, 0.7, 0.7, 1.0);
+var lightSpecular = vec4(0.5, 0.5, 0.5, 1.0);
+
+var materialAmbient = vec4(0.0, 0.0, 0.0, 1.0);
+var materialDiffuse = vec4(1.0, 0.8, 0.0, 1.0);
+var materialSpecular = vec4(1.0, 1.0, 1.0, 1.0);
+var materialShininess = 80.0;
+
+var ambientProduct;
+var diffuseProduct;
+var specularProduct;
+var modelViewMatrix;
+
+var normalsArray = [];
+var modeViewMatrix, projectionMatrix;
+var modelViewMatrixLoc, projectionMatrixLoc;
+var normalMatrix, normalMatrixLoc;
+
+var tangent = vec3(1.0, 0.0, 0.0);
+
+var texSize = 256;
+
+var image1 = new Array()
+    for (var i =0; i<texSize; i++)  image1[i] = new Array();
+    for (var i =0; i<texSize; i++) 
+        for ( var j = 0; j < texSize; j++) 
+           image1[i][j] = new Float32Array(4);
+    for (var i =0; i<texSize; i++) for (var j=0; j<texSize; j++) {
+        var c = (((i & 0x8) == 0) ^ ((j & 0x8)  == 0));
+        image1[i][j] = [c, c, c, 1];
+    }
+
+var image2 = new Uint8Array(4*texSize*texSize);
+    for ( var i = 0; i < texSize; i++ ) 
+        for ( var j = 0; j < texSize; j++ ) 
+           for(var k =0; k<4; k++) 
+                image2[4*texSize*i+4*j+k] = 255*image1[i][j][k];
 
 // Throttling function to prevent regenerateBreatherSurface from being called too frequently
 let throttleTimer;
@@ -95,11 +148,52 @@ function distance(p1, p2) {
 window.onload = function () {
   canvas = document.getElementById("render-surface");
   gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
-  if (!gl) return alert("Your browser does not support WEBGL");
-  program = initShaders(gl, "vertexShader", "fragmentShader");
-  gl.useProgram(program);
-  gl.bindTexture(gl.TEXTURE_2D, texture(gl, "erdem"));
-  gl.activeTexture(gl.TEXTURE0);
+  if (!gl) {
+    alert("Your browser does not support WebGL");
+    return;
+  }
+
+  wireframeProgram = initShaders(
+    gl,
+    "wireframe-vertex-shader",
+    "wireframe-fragment-shader"
+  );
+  gouraudProgram = initShaders(
+    gl,
+    "gouraud-vertex-shader",
+    "gouraud-fragment-shader"
+  );
+  phongProgram = initShaders(
+    gl,
+    "phong-vertex-shader",
+    "phong-fragment-shader"
+  );
+
+  // Check if shader programs are successfully created
+  if (!wireframeProgram || !gouraudProgram || !phongProgram) {
+    console.error("Shader program initialization failed");
+    return;
+  }
+
+  var lightPositionValue = [1.0, 1.0, 1.0, 0.0]; // Use w=0 for directional light, w=1 for point light
+
+  ambientProduct = mult(lightAmbient, materialAmbient);
+  diffuseProduct = mult(lightDiffuse, materialDiffuse);
+  specularProduct = mult(lightSpecular, materialSpecular);
+  modelViewMatrix = mat4();
+
+  // Set the initial active program to wireframe as an example
+  activeProgram = wireframeProgram;
+
+  // Initialize shader uniforms after shader program creation
+  initializeShaderUniforms();
+
+  initializeLightPosition(wireframeProgram, lightPositionValue);
+  initializeLightPosition(gouraudProgram, lightPositionValue);
+  initializeLightPosition(phongProgram, lightPositionValue);
+
+  gl.useProgram(activeProgram);
+
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.CULL_FACE);
   gl.frontFace(gl.CCW);
@@ -127,23 +221,28 @@ window.onload = function () {
     updateViewMatrix();
   };
 
-  let checkbox = document.getElementById("checkbox");
-  checkbox.addEventListener("change", function () {
-    wireMode = this.checked ? 1 : 0;
-  });
+  // Add event listeners to each radio button
+  let wireframeRadio = document.getElementById("wireframe");
+  let gouraudRadio = document.getElementById("gouraud");
+  let phongRadio = document.getElementById("phong");
 
-  let textureSelector = document.getElementById("textureSelector");
-  textureSelector.addEventListener("click", function () {
-    selectedTexture = textureSelector.selectedIndex;
-    if (selectedTexture == 0) {
-      gl.bindTexture(gl.TEXTURE_2D, texture(gl, "erdem"));
-    } else if (selectedTexture == 1) {
-      gl.bindTexture(gl.TEXTURE_2D, texture(gl, "aytek"));
-    } else if (selectedTexture == 2) {
-      gl.bindTexture(gl.TEXTURE_2D, texture(gl, "mustafa"));
-    }
-    gl.activeTexture(gl.TEXTURE0);
-  });
+  if (wireframeRadio) {
+    wireframeRadio.addEventListener("change", function () {
+      handleRenderTypeChange(this.value);
+    });
+  }
+
+  if (gouraudRadio) {
+    gouraudRadio.addEventListener("change", function () {
+      handleRenderTypeChange(this.value);
+    });
+  }
+
+  if (phongRadio) {
+    phongRadio.addEventListener("change", function () {
+      handleRenderTypeChange(this.value);
+    });
+  }
 
   document.getElementById("toggleRotation").onclick = function () {
     rotationMode = !rotationMode;
@@ -175,13 +274,80 @@ window.onload = function () {
   render();
 };
 
+function initializeLightPosition(program, lightPosition) {
+  gl.useProgram(program); // Ensure the correct program is being used
+  var lightPositionLocation = gl.getUniformLocation(program, "lightPosition");
+  if (lightPositionLocation === null) {
+    // The uniform might not exist in the shader or isn't used.
+    console.warn(
+      "Uniform 'lightPos' does not exist in the current program or is not used."
+    );
+    return;
+  }
+  gl.uniform4fv(lightPositionLocation, lightPosition);
+}
+
 function regenerateBreatherSurface() {
   console.log("uValue: " + uValue);
   console.log("vValue: " + vValue);
   mesh = new Mesh(breatherSurface(line_count, line_count, aa, uValue, vValue));
   mesh.setScale(magnitude);
   mesh.setWireMode(wireMode);
+  // Make sure this is called to upload initial data
+  mesh.updateVertices(
+    breatherSurface(line_count, line_count, aa, uValue, vValue)
+  );
   updateViewMatrix();
+}
+
+function handleRenderTypeChange(renderType) {
+  switch (renderType) {
+    case "wireframe":
+      activeProgram = wireframeProgram;
+      break;
+    case "gouraud":
+      activeProgram = gouraudProgram;
+      break;
+    case "phong":
+      activeProgram = phongProgram;
+      break;
+  }
+  gl.useProgram(activeProgram);
+  initializeShaderUniforms();
+  if (mesh) {
+    mesh.prepareModel(gl, activeProgram, viewMatrix, projectionMatrix);
+  }
+}
+
+function initializeShaderUniforms() {
+  var ambientProductLoc = gl.getUniformLocation(
+    activeProgram,
+    "ambientProduct"
+  );
+  var diffuseProductLoc = gl.getUniformLocation(
+    activeProgram,
+    "diffuseProduct"
+  );
+  var specularProductLoc = gl.getUniformLocation(
+    activeProgram,
+    "specularProduct"
+  );
+  var shininessLoc = gl.getUniformLocation(activeProgram, "shininess");
+  var lightPositionLoc = gl.getUniformLocation(activeProgram, "lightPosition");
+
+  if (
+    ambientProductLoc &&
+    diffuseProductLoc &&
+    specularProductLoc &&
+    shininessLoc &&
+    lightPositionLoc
+  ) {
+    gl.uniform4fv(ambientProductLoc, flatten(ambientProduct));
+    gl.uniform4fv(diffuseProductLoc, flatten(diffuseProduct));
+    gl.uniform4fv(specularProductLoc, flatten(specularProduct));
+    gl.uniform1f(shininessLoc, materialShininess);
+    gl.uniform4fv(lightPositionLoc, flatten(lightPosition));
+  }
 }
 
 function updateMesh() {
@@ -199,7 +365,23 @@ function updateViewMatrix() {
 }
 
 function render() {
-  gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(activeProgram); // Use the active program
+
+  var eye = vec3(
+    radius * Math.sin(phi),
+    radius * Math.sin(theta),
+    radius * Math.cos(phi)
+  );
+
+  modelViewMatrix = lookAt(eye, at, up);
+
+  normalMatrix = [
+    vec3(modelViewMatrix[0][0], modelViewMatrix[0][1], modelViewMatrix[0][2]),
+    vec3(modelViewMatrix[1][0], modelViewMatrix[1][1], modelViewMatrix[1][2]),
+    vec3(modelViewMatrix[2][0], modelViewMatrix[2][1], modelViewMatrix[2][2]),
+  ];
+
   if (!projectionMatrix) {
     projectionMatrix = perspective(
       radians(110),
@@ -208,12 +390,17 @@ function render() {
       1000000.0
     );
   }
+
+  gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
+  gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
+  gl.uniformMatrix3fv(normalMatrixLoc, false, flatten(normalMatrix));
+
   if (rotationMode) {
     rotAngle += 0.5;
   }
   if (mesh) {
     mesh.setRotation(rotAngle, rotAngle, rotAngle);
-    mesh.render(gl, program, viewMatrix, projectionMatrix);
+    mesh.render(gl, activeProgram, viewMatrix, projectionMatrix); // Pass activeProgram
   }
   requestAnimationFrame(render);
 }
@@ -227,29 +414,29 @@ function createViewMatrix(radius, xRot, yRot, zRot) {
   return viewMatrix;
 }
 
-// Setups texture
-function texture(gl, name) {
-  let ext = gl.getExtension("MOZ_EXT_texture_filter_anisotropic");
-  if (!ext) ext = gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
-
-  const image = document.getElementById(name);
-  const t = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, t);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-  if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, 8);
-
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-  if (isPowerOf2(image.width) && isPowerOf2(image.height))
-    gl.generateMipmap(gl.TEXTURE_2D);
-  else {
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  }
-  gl.bindTexture(gl.TEXTURE_2D, null);
-
-  return t;
+function configureTexture(image) {
+  texture = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGB,
+    texSize,
+    texSize,
+    0,
+    gl.RGB,
+    gl.UNSIGNED_BYTE,
+    image
+  );
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(
+    gl.TEXTURE_2D,
+    gl.TEXTURE_MIN_FILTER,
+    gl.NEAREST_MIPMAP_LINEAR
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 }
 
 function breatherSurface(N, M, aa, uValue, vValue) {
@@ -303,110 +490,21 @@ class Mesh {
     this.translation = vec3(0, 0, 0);
     this.rotation = vec3(0, 0, 0);
     this.scale = 1;
-
     this.wireMode = 0;
-  }
 
-  updateVertices(data) {
-    this.vertices = data[0];
-    this.texCoords = data[1];
-    this.normals = data[2];
-
-    // Update buffer data instead of recreating buffers
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(this.vertices));
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(this.texCoords));
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(this.normals));
-  }
-
-  prepareModel(gl, program, viewMatrix, projectionMatrix) {
-    gl.useProgram(program);
-
-    let positionAttribLocation = gl.getAttribLocation(program, "vPosition");
-    let texCoordAttribLocation = gl.getAttribLocation(program, "vTexCoord");
-    let normalAttribLocation = gl.getAttribLocation(program, "vNormal");
-
+    // Initialize buffers
     this.vBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(this.vertices),
-      gl.STATIC_DRAW
-    );
-
     this.tBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(this.texCoords),
-      gl.STATIC_DRAW
-    );
-
     this.nBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(this.normals),
-      gl.STATIC_DRAW
-    );
+    this.triangleStripBuffer = gl.createBuffer();
+    this.linebuffer = gl.createBuffer();
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
-    gl.vertexAttribPointer(
-      positionAttribLocation,
-      3,
-      gl.FLOAT,
-      gl.FALSE,
-      3 * Float32Array.BYTES_PER_ELEMENT,
-      0
-    );
-    gl.enableVertexAttribArray(positionAttribLocation);
+    // Initialize triangle strip and wireframe data arrays
+    this.initBufferArrays();
+  }
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
-    gl.vertexAttribPointer(
-      texCoordAttribLocation,
-      2,
-      gl.FLOAT,
-      gl.FALSE,
-      2 * Float32Array.BYTES_PER_ELEMENT,
-      0
-    );
-    gl.enableVertexAttribArray(texCoordAttribLocation);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
-    gl.vertexAttribPointer(
-      normalAttribLocation,
-      3,
-      gl.FLOAT,
-      gl.TRUE,
-      3 * Float32Array.BYTES_PER_ELEMENT,
-      0
-    );
-    gl.enableVertexAttribArray(normalAttribLocation);
-
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(program, "modelMatrix"),
-      gl.FALSE,
-      flatten(this.createTranformationMatrix())
-    );
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(program, "viewMatrix"),
-      gl.FALSE,
-      flatten(viewMatrix)
-    );
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(program, "projectionMatrix"),
-      gl.FALSE,
-      flatten(projectionMatrix)
-    );
-
-    gl.uniform1f(gl.getUniformLocation(program, "wireMode"), this.wireMode);
-
-    // Organize cordinates for texture drawing
-    this.triangleStrip = null;
+  initBufferArrays() {
+    // Initialize triangle strip array
     this.triangleStrip = new Uint16Array(
       line_count * (2 * (line_count + 1) + 2) - 2
     );
@@ -418,30 +516,148 @@ class Mesh {
       }
     }
 
-    // Organize cordinates for wireframe
-    if (this.wireMode == 0) {
-      let lines = [];
-      lines.push(this.triangleStrip[0], this.triangleStrip[1]);
-      let numStripIndices = this.triangleStrip.length;
+    // Initialize wireframe array
+    let lines = [];
+    lines.push(this.triangleStrip[0], this.triangleStrip[1]);
+    for (let i = 2; i < this.triangleStrip.length; i++) {
+      let a = this.triangleStrip[i - 2];
+      let b = this.triangleStrip[i - 1];
+      let c = this.triangleStrip[i];
 
-      for (let i = 2; i < numStripIndices; i++) {
-        let a = this.triangleStrip[i - 2];
-        let b = this.triangleStrip[i - 1];
-        let c = this.triangleStrip[i];
+      if (a != b && b != c && c != a) lines.push(a, c, b, c);
+    }
+    this.wireframe = new Uint16Array(lines);
+  }
 
-        if (a != b && b != c && c != a) lines.push(a, c, b, c);
-      }
+  updateVertices(data) {
+    this.vertices = data[0];
+    this.texCoords = data[1];
+    this.normals = data[2];
 
-      this.wireframe = new Uint16Array(lines);
+    // Update buffer data
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(this.vertices),
+      gl.STATIC_DRAW
+    );
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(this.texCoords),
+      gl.STATIC_DRAW
+    );
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(this.normals),
+      gl.STATIC_DRAW
+    );
+  }
+
+  prepareModel(gl, program, viewMatrix, projectionMatrix) {
+    gl.useProgram(program);
+
+    configureTexture(image2);
+
+    let positionAttribLocation = gl.getAttribLocation(program, "vPosition");
+    if (positionAttribLocation !== -1) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
+      gl.vertexAttribPointer(positionAttribLocation, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(positionAttribLocation);
     }
 
-    this.triangleStripBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.triangleStripBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.triangleStrip, gl.STATIC_DRAW);
+    let texCoordAttribLocation = gl.getAttribLocation(program, "vTexCoord");
+    if (texCoordAttribLocation !== -1) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
+      gl.vertexAttribPointer(texCoordAttribLocation, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(texCoordAttribLocation);
+    }
 
-    this.linebuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.linebuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.wireframe, gl.STATIC_DRAW);
+    let normalAttribLocation = gl.getAttribLocation(program, "vNormal");
+    if (normalAttribLocation !== -1) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
+      gl.vertexAttribPointer(normalAttribLocation, 3, gl.FLOAT, true, 0, 0);
+      gl.enableVertexAttribArray(normalAttribLocation);
+    }
+
+    // Set transformation matrices
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, "modelMatrix"),
+      false,
+      flatten(this.createTranformationMatrix())
+    );
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, "viewMatrix"),
+      false,
+      flatten(viewMatrix)
+    );
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, "projectionMatrix"),
+      false,
+      flatten(projectionMatrix)
+    );
+
+    // Additional uniforms (like 'wireMode') can be set here if needed
+    gl.uniform1f(gl.getUniformLocation(program, "wireMode"), this.wireMode);
+
+    modelViewMatrixLoc = gl.getUniformLocation(program, "modelViewMatrix");
+    projectionMatrixLoc = gl.getUniformLocation(program, "projectionMatrix");
+    normalMatrixLoc = gl.getUniformLocation(program, "normalMatrix");
+
+    gl.uniform4fv(
+      gl.getUniformLocation(program, "ambientProduct"),
+      flatten(ambientProduct)
+    );
+    gl.uniform4fv(
+      gl.getUniformLocation(program, "diffuseProduct"),
+      flatten(diffuseProduct)
+    );
+    gl.uniform4fv(
+      gl.getUniformLocation(program, "specularProduct"),
+      flatten(specularProduct)
+    );
+    gl.uniform4fv(
+      gl.getUniformLocation(program, "lightPosition"),
+      flatten(lightPosition)
+    );
+    gl.uniform1f(
+      gl.getUniformLocation(program, "shininess"),
+      materialShininess
+    );
+
+    var ambientProductLoc = gl.getUniformLocation(
+      activeProgram,
+      "ambientProduct"
+    );
+    var diffuseProductLoc = gl.getUniformLocation(
+      activeProgram,
+      "diffuseProduct"
+    );
+    var specularProductLoc = gl.getUniformLocation(
+      activeProgram,
+      "specularProduct"
+    );
+    var shininessLoc = gl.getUniformLocation(activeProgram, "shininess");
+
+    if (
+      ambientProductLoc &&
+      diffuseProductLoc &&
+      specularProductLoc &&
+      shininessLoc
+    ) {
+      gl.uniform4fv(ambientProductLoc, flatten(ambientProduct));
+      gl.uniform4fv(diffuseProductLoc, flatten(diffuseProduct));
+      gl.uniform4fv(specularProductLoc, flatten(specularProduct));
+      gl.uniform1f(shininessLoc, materialShininess);
+    }
+
+    gl.uniform3fv(
+      gl.getUniformLocation(program, "objTangent"),
+      flatten(tangent)
+    );
   }
 
   createTranformationMatrix() {
@@ -463,9 +679,15 @@ class Mesh {
 
     if (this.wireMode == 0) {
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.linebuffer);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.wireframe, gl.STATIC_DRAW);
       gl.drawElements(gl.LINES, this.wireframe.length, gl.UNSIGNED_SHORT, 0);
     } else {
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.triangleStripBuffer);
+      gl.bufferData(
+        gl.ELEMENT_ARRAY_BUFFER,
+        this.triangleStrip,
+        gl.STATIC_DRAW
+      );
       gl.drawElements(
         gl.TRIANGLE_STRIP,
         this.triangleStrip.length,

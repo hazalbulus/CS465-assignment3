@@ -2,7 +2,8 @@
 <html>
     <head>
         <title>CS465 - Assignment 3</title>
-        <script id="vertexShader" type="x-shader/x-vertex">
+
+        <script id="wireframe-vertex-shader" type="x-shader/x-vertex">
             precision mediump float;
 
             attribute vec3 vPosition;
@@ -16,14 +17,16 @@
             uniform mat4 viewMatrix;
             uniform mat4 projectionMatrix;
 
+            uniform vec4 lightPosition;
+
             void main() {
                 vec3 pos = (viewMatrix * modelMatrix * vec4(vPosition, 1.0)).xyz;
-                vec4 lightPos = vec4(1.0, 1.0, 1.0, 1.0);
+                vec4 lightPosition = vec4(1.0, 1.0, 1.0, 1.0);
 
-                if (lightPos.w == 0.0) {
-                    L = normalize(lightPos.xyz);
+                if (lightPosition.w == 0.0) {
+                    L = normalize(lightPosition.xyz);
                 } else {
-                    L = normalize(lightPos.xyz - pos);
+                    L = normalize(lightPosition.xyz - pos);
                 }
 
                 E = -normalize(pos);
@@ -44,7 +47,7 @@
             }
         </script>
 
-        <script id="fragmentShader" type="x-shader/x-fragment">
+        <script id="wireframe-fragment-shader" type="x-shader/x-fragment">
             precision mediump float;
 
             varying vec2 fTexCoord;
@@ -78,9 +81,181 @@
             }
         </script>
 
+        <script id="gouraud-vertex-shader" type="x-shader/x-vertex">
+            attribute  vec4 vPosition;
+            varying vec3 N, L, E;
+            attribute vec4 vNormal;
+            varying vec4 fColor;
+            uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform vec4 lightPosition;
+            uniform float shininess;
+            uniform mat3 normalMatrix;
+            uniform vec4 vColor;
+
+            varying vec3 V;
+            attribute vec2 vTexCoord;
+            uniform vec3 objTangent;
+            varying vec2 fTexCoord;
+            varying vec3 Le;
+
+
+            void main() 
+            {
+                vec3 pos = (modelViewMatrix * vPosition).xyz;
+            
+                if(lightPosition.w == 0.0) L = normalize(lightPosition.xyz);
+                else L = normalize( lightPosition.xyz - pos );
+            
+                E =  -normalize(pos);
+                vec3 H = normalize( L + E );
+                N = normalize( normalMatrix*vNormal.xyz);
+            
+                fTexCoord = vTexCoord;
+                        /*vec3 eyeLightPos = (modelViewMatrix*lightPosition).xyz;
+                        vec3 T  = normalize(normalMatrix*objTangent);
+                        vec3 B = cross(N, T);
+                        Le.x = dot(T, eyeLightPos-pos);
+                        Le.y = dot(B, eyeLightPos-pos);
+                        Le.z = dot(N, eyeLightPos-pos);
+                        Le = normalize(Le);
+                        V.x = dot(T, -pos);
+                        V.y = dot(B, -pos);
+                        V.z = dot(N, -pos);
+                        V = normalize(V);*/
+            
+
+            
+                vec4 ambient = ambientProduct;
+                float Kd = max( dot(L, N), 0.0 );
+                vec4 diffuse = Kd*diffuseProduct;
+                float Ks = pow( max(dot(N, H), 0.0), shininess );
+                vec4  specular = Ks * specularProduct;
+
+                if( dot(L, N) < 0.0 ) {
+                    specular = vec4(0.0, 0.0, 0.0, 1.0);
+                } 
+            
+                fColor =   vColor + diffuse + ambient  + specular;// + vec4(Kdr*diffuseProduct.xyz, 1.0);
+                fColor.a = 1.0;
+                gl_Position = projectionMatrix*modelViewMatrix*vPosition;
+            } 
+        </script>
+            
+        <script id="gouraud-fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+            varying vec4 fColor;
+
+            //varying vec3 Le;
+            varying vec2 fTexCoord;
+
+            //uniform sampler2D texMap;
+            //uniform vec4 diffuseProduct;
+            uniform sampler2D texture;
+
+            void main()
+            {
+                /*vec4 Ne = texture2D(texMap, fTexCoord);
+                vec3 NN =  normalize(2.0*Ne.xyz-1.0);
+                vec3 LL = normalize(Le);
+                float Kdr = max(dot(NN, LL), 0.0);*/
+                gl_FragColor = fColor*texture2D( texture, fTexCoord ); // vec4(Kdr*diffuseProduct.xyz, 1.0);
+            }
+        </script>
+            
+        <script id="phong-vertex-shader" type="x-shader/x-vertex">
+            attribute  vec4 vPosition;
+            varying vec3 N, L, E;
+            attribute vec4 vNormal;
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform vec4 lightPosition;
+            uniform mat3 normalMatrix;
+            uniform vec4 vColor;
+            varying vec4 aColor;
+
+            varying vec3 V;
+            attribute vec2 vTexCoord;
+            uniform vec3 objTangent;
+            varying vec2 fTexCoord;
+            varying vec3 Le;
+            //uniform sampler2D texMap;
+
+            void main() 
+            {
+                vec3 pos = (modelViewMatrix * vPosition).xyz;
+            
+                if(lightPosition.w == 0.0) L = normalize(lightPosition.xyz);
+                else L = normalize( lightPosition.xyz - pos );
+            
+                E =  -normalize(pos);
+                //vec3 H = normalize( L + E );
+                N = normalize( normalMatrix*vNormal.xyz);
+            
+                fTexCoord = vTexCoord;
+                        /*vec3 eyeLightPos = (modelViewMatrix*lightPosition).xyz;
+                        vec3 T  = normalize(normalMatrix*objTangent);
+                        vec3 B = cross(N, T);
+                        Le.x = dot(T, eyeLightPos-pos);
+                        Le.y = dot(B, eyeLightPos-pos);
+                        Le.z = dot(N, eyeLightPos-pos);
+                        Le = normalize(Le);
+                        V.x = dot(T, -pos);
+                        V.y = dot(B, -pos);
+                        V.z = dot(N, -pos);
+                        V = normalize(V);
+                        vec4 Ne = texture2D(texMap, fTexCoord);
+                        vec3 NN =  normalize(2.0*Ne.xyz-1.0);
+                        vec3 LL = normalize(Le);
+                        float Kdr = max(dot(NN, LL), 0.0);*/
+            
+                aColor = vColor;        
+                gl_Position = projectionMatrix*modelViewMatrix*vPosition;
+            } 
+        </script>
+            
+        <script id="phong-fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+   
+            varying  vec2 fTexCoord;
+            varying vec4 aColor;
+
+            uniform vec4 ambientProduct;
+            uniform vec4 diffuseProduct;
+            uniform vec4 specularProduct;
+            uniform float shininess;
+            varying vec3 N, L, E;
+
+            uniform sampler2D texture;
+
+            void main()
+            {
+                vec4 fColor;
+            
+                vec3 H = normalize( L + E );
+                vec4 ambient = ambientProduct;
+            
+                float Kd = max( dot(L, N), 0.0 );
+                vec4  diffuse = Kd*diffuseProduct;
+            
+                float Ks = pow( max(dot(N, H), 0.0), shininess );
+                vec4  specular = Ks * specularProduct;
+
+                if( dot(L, N) < 0.0 ) specular = vec4(0.0, 0.0, 0.0, 1.0);
+            
+                fColor =  aColor + ambient + diffuse + specular;
+                fColor.a = 1.0;
+            
+                gl_FragColor = fColor*texture2D( texture, fTexCoord );
+            }
+        </script>
+        
+        <link rel="stylesheet" href="styles.css">
         <script type="text/javascript" src="Common/webgl-utils.js"></script>
         <script type="text/javascript" src="Common/initShaders.js"></script>
         <script type="text/javascript" src="Common/MV.js"></script>
+            
 
         <script type="text/javascript" src="breather.js"></script>
     </head>
@@ -93,20 +268,32 @@
             v range: -37.4 <input id="v-range" type="range" min="-37" max="37" step="0.01" value="0" /> 37.4 <br></br>
             u range: -14 <input id="u-range" type="range" min="-37" max="37" step="0.01" value="0" /> 14 <br></br>
             Zoom :0.1 <input id="magnitude" type="range" min="0.1" max="3" step="0.01" value="0.5" /> 3 <br></br>
-            <label>
-                <select id = "textureSelector" size = "3">
-                    <option value = "0">Erdem Texture</option>
-                    <option value = "1">Donut Texture</option>
-                    <option value = "2">Bagel Texture</option>
-                <input type="checkbox" id ="checkbox" data-toggle="toggle">Texture Mode
-            </label>
+            </br><span class="tts">Surface Render Type:</span></br>
+
+            <div class="containerRD">
+                <div class="radio">
+                  <input class="radio-input" id="wireframe" name="renderType" type="radio" onchange="handleRenderTypeChange(this.value)" value="wireframe" checked>
+                  <label for="wireframe" class="radio-label">Wireframe</label>
+                </div>
+            
+                <div class="radio">
+                  <input class="radio-input" id="gouraud" name="renderType" type="radio" onchange="handleRenderTypeChange(this.value)" value="gouraud">
+                  <label for="gouraud" class="radio-label">Gouraud Shaded</label>
+                </div>
+            
+                <div class="radio">
+                    <input class="radio-input" id="phong" name="renderType" type="radio" onchange="handleRenderTypeChange(this.value)" value="phong">
+                    <label for="phong" class="radio-label">Phong Shaded</label>
+                </div>
+            </div>
+        
             <button type="button" id="toggleRotation">Toggle Rotation</button>
             <br></br>
             <b>Camera Controls: W, S, UP, DOWN</b>
         </br>
 
-        <img id="erdem" src="textures/erdem.png" width="0" height="0" crossorigin="Anonymous" />
+        <!-- <img id="erdem" src="textures/erdem.png" width="0" height="0" crossorigin="Anonymous" />
         <img id="aytek" src="textures/donut.png" width="0" height="0" crossorigin="Anonymous" />
-        <img id="mustafa" src="textures/sesame.png" width="0" height="0" crossorigin="Anonymous" />
+        <img id="mustafa" src="textures/sesame.png" width="0" height="0" crossorigin="Anonymous" /> -->
     </body>
 </html>
