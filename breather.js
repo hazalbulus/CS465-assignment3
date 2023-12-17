@@ -9,12 +9,12 @@ let mesh;
 let aa = 0.5;
 let uValue = 14; // Single value for u, controlled by a slider
 let vValue = 37.4; // Single value for v, controlled by a slider
-let uMin = -14,
-  uMax = 14;
-let vMin = -37.4,
-  vMax = 37.4;
+let vMin = -14,
+  vMax = 14;
+let uMin = -37.4,
+  uMax = 37.4;
 
-const line_count = 50;
+const line_count = 100;
 let radius = 160;
 let xRot = 110;
 let yRot = 180;
@@ -257,54 +257,36 @@ function breatherSurface(N, M, aa, uValue, vValue) {
   let normals = [];
   let textureCoords = [];
   let w = Math.sqrt(1 - aa * aa);
-  let uStep;
-  let vStep;
 
-  if (uValue > uMax) {
-    // Calculate step size based on the range and line count
-    uStep = (uMax - uMin) / N;
-    vStep = (vMax - vMin) / M;
-  } else {
-    // Calculate step size based on the range and line count
-    uStep = (uValue - uMin) / N;
-    vStep = (vValue - vMin) / M;
-  }
+  let uMin = -uValue;
+  let uMax = uValue;
+  let vMin = -vValue;
+  let vMax = vValue;
 
-  console.log("uStepValue: " + uStep);
-  console.log("vStepValue: " + vStep);
+  let uStep = (uMax - uMin) / N;
+  let vStep = (vMax - vMin) / M;
 
-  // Loop over a grid of u and v values
   for (let i = 0; i <= N; i++) {
-    let ui = uMin + i * uStep;
-    console.log("ui: " + ui);
+    let u = uMin + i * uStep;
     for (let j = 0; j <= M; j++) {
-      let vj = vMin + j * vStep;
-      console.log("vj: " + vj);
+      let v = vMin + j * vStep;
 
-      let denom =
-        aa *
-        (Math.pow(w * Math.cosh(aa * ui), 2) +
-          Math.pow(aa * Math.sin(w * vj), 2));
-      let x =
-        -ui +
-        (2 * (1 - aa * aa) * Math.cosh(aa * ui) * Math.sinh(aa * ui)) / denom;
+      let cosh_au = Math.cosh(aa * u);
+      let sinh_au = Math.sinh(aa * u);
+      let sin_wv = Math.sin(w * v);
+      let cos_wv = Math.cos(w * v);
+      let cos_v = Math.cos(v);
+      let sin_v = Math.sin(v);
+
+      let denom = aa * (w * cosh_au * w * cosh_au + aa * sin_v * aa * sin_v);
+      let x = -u + (2 * (1 - aa * aa) * cosh_au * sinh_au) / denom;
       let y =
-        (2 *
-          w *
-          Math.cosh(aa * ui) *
-          (-w * Math.cos(vj) * Math.cos(w * vj) -
-            Math.sin(vj) * Math.sin(w * vj))) /
-        denom;
+        (2 * w * cosh_au * (-w * cos_v * cos_wv - sin_v * sin_wv)) / denom;
       let z =
-        (2 *
-          w *
-          Math.cosh(aa * ui) *
-          (-w * Math.sin(vj) * Math.cos(w * vj) +
-            Math.cos(vj) * Math.sin(w * vj))) /
-        denom;
+        (2 * w * cosh_au * (-w * sin_v * cos_wv + cos_v * sin_wv)) / denom;
 
       vertices.push(x, y, z);
-      normals.push(0, 0, 1); // Placeholder for actual normal calculation
+      normals.push(0, 0, 1);
       textureCoords.push(i / N, j / M);
     }
   }
