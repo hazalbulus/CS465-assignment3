@@ -16,7 +16,9 @@ let uMin = -37.4,
 var theta = 0.0;
 var phi = 0.0;
 
-const line_count = 100;
+var cubemapTexture;
+
+const line_count = 150;
 let radius = 160;
 let xRot = 110;
 let yRot = 180;
@@ -33,19 +35,22 @@ var activeProgram;
 const at = vec3(0.0, 0.0, 0.0);
 const up = vec3(0.0, 1.0, 0.0);
 
-var LX = 10.0;
-var LY = 0.0;
-var LZ = 0.0;
+var cameraPosition;
+var reflectivity = 0.5; // Adjust this value as needed
 
-var lightPosition = vec4(LX, LY, LZ, 1.0);
-var lightAmbient = vec4(0.2, 0.2, 0.2, 1.0);
-var lightDiffuse = vec4(0.7, 0.7, 0.7, 1.0);
-var lightSpecular = vec4(0.5, 0.5, 0.5, 1.0);
+var LX = 1.0;
+var LY = 1.0;
+var LZ = 1.0;
 
-var materialAmbient = vec4(0.0, 0.0, 0.0, 1.0);
-var materialDiffuse = vec4(1.0, 0.8, 0.0, 1.0);
+var lightPosition = vec4(LX, LY, LZ, 0.0);
+var lightAmbient = vec4(0.5, 0.5, 0.5, 1.0);
+var lightDiffuse = vec4(1.0, 1.0, 1.0, 1.0);
+var lightSpecular = vec4(1.0, 1.0, 1.0, 1.0);
+
+var materialAmbient = vec4(1.0, 1.0, 1.0, 1.0);
+var materialDiffuse = vec4(1.0, 1.0, 1.0, 1.0);
 var materialSpecular = vec4(1.0, 1.0, 1.0, 1.0);
-var materialShininess = 80.0;
+var materialShininess = 50.0;
 
 var ambientProduct;
 var diffuseProduct;
@@ -59,23 +64,109 @@ var normalMatrix, normalMatrixLoc;
 
 var tangent = vec3(1.0, 0.0, 0.0);
 
-var texSize = 256;
+var texSize = 64;
 
-var image1 = new Array()
-    for (var i =0; i<texSize; i++)  image1[i] = new Array();
-    for (var i =0; i<texSize; i++) 
-        for ( var j = 0; j < texSize; j++) 
-           image1[i][j] = new Float32Array(4);
-    for (var i =0; i<texSize; i++) for (var j=0; j<texSize; j++) {
-        var c = (((i & 0x8) == 0) ^ ((j & 0x8)  == 0));
-        image1[i][j] = [c, c, c, 1];
+var temp = new Array();
+for (var i = 0; i < texSize; i++)
+    temp[i] = new Array();
+
+for (var i = 0; i < texSize; i++)
+    for (var j = 0; j < texSize; j++)
+        temp[i][j] = new Float32Array(4);
+
+for (var i = 0; i < texSize; i++) {
+    for (var j = 0; j < texSize; j++) {
+        var isRed = (((i & 0x8) == 0) ^ ((j & 0x8) == 0));
+        if (isRed) {
+            // Red color
+            temp[i][j] = [1, 0, 0, 1]; // Red with full opacity
+        } else {
+            // White color
+            temp[i][j] = [1, 1, 1, 1]; // White with full opacity
+        }
     }
+}
 
-var image2 = new Uint8Array(4*texSize*texSize);
-    for ( var i = 0; i < texSize; i++ ) 
-        for ( var j = 0; j < texSize; j++ ) 
-           for(var k =0; k<4; k++) 
-                image2[4*texSize*i+4*j+k] = 255*image1[i][j][k];
+// Convert floats to ubytes for texture
+var image2 = new Uint8Array(4 * texSize * texSize);
+
+for(var i = 0; i < texSize; i++)
+    for(var j = 0; j < texSize; j++)
+       for(var k = 0; k < 4; k++)
+            image2[4 * texSize * i + 4 * j + k] = 255 * temp[i][j][k];
+
+// Assuming you have a function to load textures, create a cubemap texture.
+function loadCubemap() {
+  // URLs of the images for each face of the cubemap
+  const urls = [
+    "donut.jpg",
+    "donut.jpg",
+    "donut.jpg",
+    "donut.jpg",
+    "donut.jpg",
+    "donut.jpg",
+  ];
+
+  const cubemapTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
+
+  urls.forEach((url, index) => {
+    const target = gl.TEXTURE_CUBE_MAP_POSITIVE_X + index;
+    initializeTextureForCubemapFace(gl, target); // Define this function to initialize the texture face
+    loadImageForCubemapFace(gl, url, target, cubemapTexture); // Define this function to load the image for the texture face
+  });
+
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.texParameteri(
+    gl.TEXTURE_CUBE_MAP,
+    gl.TEXTURE_MIN_FILTER,
+    gl.LINEAR
+  );
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  // gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  // gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+  return cubemapTexture;
+}
+
+function initializeTextureForCubemapFace(gl, target) {
+  const level = 0;
+  const internalFormat = gl.RGBA;
+  const width = 512; // or your desired size
+  const height = 512;
+  const border = 0;
+  const format = gl.RGBA;
+  const type = gl.UNSIGNED_BYTE;
+  const data = null;
+
+  gl.texImage2D(
+    target,
+    level,
+    internalFormat,
+    width,
+    height,
+    border,
+    format,
+    type,
+    data
+  );
+}
+
+function loadImageForCubemapFace(gl, url, target, cubemapTexture) {
+  const level = 0;
+  const internalFormat = gl.RGBA;
+  const format = gl.RGBA;
+  const type = gl.UNSIGNED_BYTE;
+
+  const image = new Image();
+  image.onload = function () {
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
+    gl.texImage2D(target, level, internalFormat, format, type, image);
+    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  };
+  image.src = url;
+}
 
 // Throttling function to prevent regenerateBreatherSurface from being called too frequently
 let throttleTimer;
@@ -228,18 +319,21 @@ window.onload = function () {
 
   if (wireframeRadio) {
     wireframeRadio.addEventListener("change", function () {
+      wireMode = 0;
       handleRenderTypeChange(this.value);
     });
   }
 
   if (gouraudRadio) {
     gouraudRadio.addEventListener("change", function () {
+      wireMode = 1;
       handleRenderTypeChange(this.value);
     });
   }
 
   if (phongRadio) {
     phongRadio.addEventListener("change", function () {
+      wireMode = 2;
       handleRenderTypeChange(this.value);
     });
   }
@@ -250,17 +344,17 @@ window.onload = function () {
 
   document.getElementById("aa").oninput = function () {
     aa = parseFloat(document.getElementById("aa").value);
-    throttle(regenerateBreatherSurface, 100);
+    regenerateBreatherSurface();
   };
 
   document.getElementById("u-range").oninput = function () {
     uValue = parseFloat(document.getElementById("u-range").value);
-    throttle(regenerateBreatherSurface, 100);
+    regenerateBreatherSurface();
   };
 
   document.getElementById("v-range").oninput = function () {
     vValue = parseFloat(document.getElementById("v-range").value);
-    throttle(regenerateBreatherSurface, 100);
+    regenerateBreatherSurface();
   };
 
   document.getElementById("magnitude").oninput = function () {
@@ -290,7 +384,14 @@ function initializeLightPosition(program, lightPosition) {
 function regenerateBreatherSurface() {
   console.log("uValue: " + uValue);
   console.log("vValue: " + vValue);
-  mesh = new Mesh(breatherSurface(line_count, line_count, aa, uValue, vValue));
+  // Load the cubemap textures
+  cubemapTexture = loadCubemap();
+
+  // Create the Mesh instance with the cubemap texture
+  mesh = new Mesh(
+    breatherSurface(line_count, line_count, aa, uValue, vValue),
+    cubemapTexture
+  );
   mesh.setScale(magnitude);
   mesh.setWireMode(wireMode);
   // Make sure this is called to upload initial data
@@ -317,6 +418,7 @@ function handleRenderTypeChange(renderType) {
   if (mesh) {
     mesh.prepareModel(gl, activeProgram, viewMatrix, projectionMatrix);
   }
+  regenerateBreatherSurface();
 }
 
 function initializeShaderUniforms() {
@@ -373,8 +475,8 @@ function render() {
     radius * Math.sin(theta),
     radius * Math.cos(phi)
   );
-
   modelViewMatrix = lookAt(eye, at, up);
+  cameraPosition = eye;
 
   normalMatrix = [
     vec3(modelViewMatrix[0][0], modelViewMatrix[0][1], modelViewMatrix[0][2]),
@@ -395,13 +497,21 @@ function render() {
   gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
   gl.uniformMatrix3fv(normalMatrixLoc, false, flatten(normalMatrix));
 
+  // Correcting the usage of activeProgram instead of program
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
+  gl.uniform1i(gl.getUniformLocation(activeProgram, "uEnvironmentMap"), 0);
+
   if (rotationMode) {
     rotAngle += 0.5;
   }
+
   if (mesh) {
+    mesh.setupEnvironmentMapping();
     mesh.setRotation(rotAngle, rotAngle, rotAngle);
-    mesh.render(gl, activeProgram, viewMatrix, projectionMatrix); // Pass activeProgram
+    mesh.render(gl, activeProgram, viewMatrix, projectionMatrix);
   }
+
   requestAnimationFrame(render);
 }
 
@@ -465,15 +575,33 @@ function breatherSurface(N, M, aa, uValue, vValue) {
       let cos_v = Math.cos(v);
       let sin_v = Math.sin(v);
 
-      let denom = aa * (w * cosh_au * w * cosh_au + aa * sin_v * aa * sin_v);
-      let x = -u + (2 * (1 - aa * aa) * cosh_au * sinh_au) / denom;
-      let y =
-        (2 * w * cosh_au * (-w * cos_v * cos_wv - sin_v * sin_wv)) / denom;
-      let z =
-        (2 * w * cosh_au * (-w * sin_v * cos_wv + cos_v * sin_wv)) / denom;
+      let denom = aa * (cosh_au * cosh_au + aa * sin_v * aa * sin_v);
+      let x = -u + (2 * (1 - aa * aa) * sinh_au * cosh_au) / denom;
+      let y = (2 * w * cosh_au * (-cos_v * cos_wv - sin_v * sin_wv)) / denom;
+      let z = (2 * w * cosh_au * (-sin_v * cos_wv + cos_v * sin_wv)) / denom;
+
+      // Partial derivatives
+      let xu = (-1 + (2 * (1 - aa * aa) * cosh_au * cosh_au) / denom) * aa;
+      let yu = (2 * w * sinh_au * (-cos_v * cos_wv - sin_v * sin_wv)) / denom;
+      let zu = (2 * w * sinh_au * (-sin_v * cos_wv + cos_v * sin_wv)) / denom;
+
+      let xv = 0;
+      let yv = 2 * w * cosh_au * (w * sin_v * cos_wv - cos_v * sin_wv) * aa;
+      let zv = -2 * w * cosh_au * (w * cos_v * cos_wv + sin_v * sin_wv) * aa;
+
+      // Cross product of partial derivatives gives the normal
+      let nx = yu * zv - zu * yv;
+      let ny = zu * xv - xu * zv;
+      let nz = xu * yv - yu * xv;
+
+      // Normalize the normal
+      let length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx /= length;
+      ny /= length;
+      nz /= length;
 
       vertices.push(x, y, z);
-      normals.push(0, 0, 1);
+      normals.push(nx, ny, nz);
       textureCoords.push(i / N, j / M);
     }
   }
@@ -482,29 +610,61 @@ function breatherSurface(N, M, aa, uValue, vValue) {
 
 // Mesh object
 class Mesh {
-  constructor(data) {
+  constructor(data, cubemapTexture) {
     this.vertices = data[0];
-    this.texCoords = data[1];
-    this.normals = data[2];
-
+    this.normals = data[1];
+    this.texCoords = data[2];
+    this.cubemapTexture = cubemapTexture;
     this.translation = vec3(0, 0, 0);
     this.rotation = vec3(0, 0, 0);
     this.scale = 1;
-    this.wireMode = 0;
-
-    // Initialize buffers
     this.vBuffer = gl.createBuffer();
-    this.tBuffer = gl.createBuffer();
     this.nBuffer = gl.createBuffer();
-    this.triangleStripBuffer = gl.createBuffer();
-    this.linebuffer = gl.createBuffer();
-
-    // Initialize triangle strip and wireframe data arrays
+    this.tBuffer = gl.createBuffer();
+    this.prepareBuffers();
     this.initBufferArrays();
   }
 
+  prepareBuffers() {
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(this.vertices),
+      gl.STATIC_DRAW
+    );
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(this.normals),
+      gl.STATIC_DRAW
+    );
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(this.texCoords),
+      gl.STATIC_DRAW
+    );
+  }
+
+  // Method to set up shader program with environment mapping
+  setupEnvironmentMapping() {
+    gl.useProgram(activeProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.cubemapTexture);
+    gl.uniform1i(gl.getUniformLocation(activeProgram, "uEnvironmentMap"), 0);
+    gl.uniform3fv(
+      gl.getUniformLocation(activeProgram, "uCameraPosition"),
+      flatten(cameraPosition)
+    );
+    gl.uniform1f(
+      gl.getUniformLocation(activeProgram, "uReflectivity"),
+      reflectivity
+    );
+  }
+
   initBufferArrays() {
-    // Initialize triangle strip array
+    this.linebuffer = gl.createBuffer();
+    this.triangleStripBuffer = gl.createBuffer();
     this.triangleStrip = new Uint16Array(
       line_count * (2 * (line_count + 1) + 2) - 2
     );
@@ -515,15 +675,12 @@ class Mesh {
         this.triangleStrip[n++] = i * (line_count + 1) + j;
       }
     }
-
-    // Initialize wireframe array
     let lines = [];
     lines.push(this.triangleStrip[0], this.triangleStrip[1]);
     for (let i = 2; i < this.triangleStrip.length; i++) {
       let a = this.triangleStrip[i - 2];
       let b = this.triangleStrip[i - 1];
       let c = this.triangleStrip[i];
-
       if (a != b && b != c && c != a) lines.push(a, c, b, c);
     }
     this.wireframe = new Uint16Array(lines);
@@ -531,24 +688,20 @@ class Mesh {
 
   updateVertices(data) {
     this.vertices = data[0];
-    this.texCoords = data[1];
-    this.normals = data[2];
-
-    // Update buffer data
+    this.normals = data[1];
+    this.texCoords = data[2];
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array(this.vertices),
       gl.STATIC_DRAW
     );
-
     gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array(this.texCoords),
       gl.STATIC_DRAW
     );
-
     gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -559,31 +712,19 @@ class Mesh {
 
   prepareModel(gl, program, viewMatrix, projectionMatrix) {
     gl.useProgram(program);
-
     configureTexture(image2);
-
     let positionAttribLocation = gl.getAttribLocation(program, "vPosition");
-    if (positionAttribLocation !== -1) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
-      gl.vertexAttribPointer(positionAttribLocation, 3, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(positionAttribLocation);
-    }
-
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vBuffer);
+    gl.vertexAttribPointer(positionAttribLocation, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(positionAttribLocation);
     let texCoordAttribLocation = gl.getAttribLocation(program, "vTexCoord");
-    if (texCoordAttribLocation !== -1) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
-      gl.vertexAttribPointer(texCoordAttribLocation, 2, gl.FLOAT, false, 0, 0);
-      gl.enableVertexAttribArray(texCoordAttribLocation);
-    }
-
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.tBuffer);
+    gl.vertexAttribPointer(texCoordAttribLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(texCoordAttribLocation);
     let normalAttribLocation = gl.getAttribLocation(program, "vNormal");
-    if (normalAttribLocation !== -1) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
-      gl.vertexAttribPointer(normalAttribLocation, 3, gl.FLOAT, true, 0, 0);
-      gl.enableVertexAttribArray(normalAttribLocation);
-    }
-
-    // Set transformation matrices
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.nBuffer);
+    gl.vertexAttribPointer(normalAttribLocation, 3, gl.FLOAT, true, 0, 0);
+    gl.enableVertexAttribArray(normalAttribLocation);
     gl.uniformMatrix4fv(
       gl.getUniformLocation(program, "modelMatrix"),
       false,
@@ -599,14 +740,10 @@ class Mesh {
       false,
       flatten(projectionMatrix)
     );
-
-    // Additional uniforms (like 'wireMode') can be set here if needed
     gl.uniform1f(gl.getUniformLocation(program, "wireMode"), this.wireMode);
-
     modelViewMatrixLoc = gl.getUniformLocation(program, "modelViewMatrix");
     projectionMatrixLoc = gl.getUniformLocation(program, "projectionMatrix");
     normalMatrixLoc = gl.getUniformLocation(program, "normalMatrix");
-
     gl.uniform4fv(
       gl.getUniformLocation(program, "ambientProduct"),
       flatten(ambientProduct)
@@ -627,33 +764,6 @@ class Mesh {
       gl.getUniformLocation(program, "shininess"),
       materialShininess
     );
-
-    var ambientProductLoc = gl.getUniformLocation(
-      activeProgram,
-      "ambientProduct"
-    );
-    var diffuseProductLoc = gl.getUniformLocation(
-      activeProgram,
-      "diffuseProduct"
-    );
-    var specularProductLoc = gl.getUniformLocation(
-      activeProgram,
-      "specularProduct"
-    );
-    var shininessLoc = gl.getUniformLocation(activeProgram, "shininess");
-
-    if (
-      ambientProductLoc &&
-      diffuseProductLoc &&
-      specularProductLoc &&
-      shininessLoc
-    ) {
-      gl.uniform4fv(ambientProductLoc, flatten(ambientProduct));
-      gl.uniform4fv(diffuseProductLoc, flatten(diffuseProduct));
-      gl.uniform4fv(specularProductLoc, flatten(specularProduct));
-      gl.uniform1f(shininessLoc, materialShininess);
-    }
-
     gl.uniform3fv(
       gl.getUniformLocation(program, "objTangent"),
       flatten(tangent)
@@ -669,14 +779,12 @@ class Mesh {
     matrix = mult(matrix, rotate(this.rotation[0], vec3(1, 0, 0)));
     matrix = mult(matrix, rotate(this.rotation[1], vec3(0, 1, 0)));
     matrix = mult(matrix, rotate(this.rotation[2], vec3(0, 0, 1)));
-
     matrix = mult(matrix, scale4(this.scale, this.scale, this.scale));
     return matrix;
   }
   //Render function of the mesh object
   render(gl, program, viewMatrix, projectionMatrix) {
     this.prepareModel(gl, program, viewMatrix, projectionMatrix);
-
     if (this.wireMode == 0) {
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.linebuffer);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.wireframe, gl.STATIC_DRAW);
