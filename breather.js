@@ -199,28 +199,6 @@ function loadTexture(url) {
   return texture;
 }
 
-function initializeTextureForCubemapFace(gl, target) {
-  const level = 0;
-  const internalFormat = gl.RGBA;
-  const width = 512; // or your desired size
-  const height = 512;
-  const border = 0;
-  const format = gl.RGBA;
-  const type = gl.UNSIGNED_BYTE;
-  const data = null;
-
-  gl.texImage2D(
-    target,
-    level,
-    internalFormat,
-    width,
-    height,
-    border,
-    format,
-    type,
-    data
-  );
-}
 
 function loadImageForCubemapFace(gl, url, target, cubemapTexture) {
   const level = 0;
@@ -256,53 +234,6 @@ function scale4(a, b, c) {
   result[1][1] = b;
   result[2][2] = c;
   return result;
-}
-// Checks if the given value is power of 2
-function isPowerOf2(value) {
-  return (value & (value - 1)) == 0;
-}
-
-// Breather surface equations
-function breatherX(u, v, a) {
-  const w = Math.sqrt(1 - a * a);
-  const denom =
-    a * (Math.pow(w * Math.cosh(a * u), 2) + Math.pow(a * Math.sin(w * v), 2));
-  return -u + (2 * (1 - a * a) * Math.cosh(a * u) * Math.sinh(a * u)) / denom;
-}
-
-function breatherY(u, v, a) {
-  const w = Math.sqrt(1 - a * a);
-  const denom =
-    a * (Math.pow(w * Math.cosh(a * u), 2) + Math.pow(a * Math.sin(w * v), 2));
-  return (
-    (2 *
-      w *
-      Math.cosh(a * u) *
-      (-w * Math.cos(v) * Math.cos(w * v) - Math.sin(v) * Math.sin(w * v))) /
-    denom
-  );
-}
-
-function breatherZ(u, v, a) {
-  const w = Math.sqrt(1 - a * a);
-  const denom =
-    a * (Math.pow(w * Math.cosh(a * u), 2) + Math.pow(a * Math.sin(w * v), 2));
-  return (
-    (2 *
-      w *
-      Math.cosh(a * u) *
-      (-w * Math.sin(v) * Math.cos(w * v) + Math.cos(v) * Math.sin(w * v))) /
-    denom
-  );
-}
-
-// Calculation of distance between two point
-function distance(p1, p2) {
-  return Math.sqrt(
-    Math.pow(p1[0] - p2[0], 2) +
-      Math.pow(p1[1] - p2[1], 2) +
-      Math.pow(p1[2] - p2[2], 2)
-  );
 }
 
 window.onload = function () {
@@ -540,7 +471,7 @@ function updateViewMatrix() {
 
 function render() {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.useProgram(activeProgram); // Use the active program
+  gl.useProgram(activeProgram); 
 
   var eye = vec3(
     radius * Math.sin(phi),
@@ -576,9 +507,6 @@ function render() {
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
   gl.uniform1i(gl.getUniformLocation(activeProgram, "texMap"), 0);
 
-  // gl.activeTexture(gl.TEXTURE1); // Use a different texture unit than your regular textures
-  // gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
-  // gl.uniform1i(gl.getUniformLocation(activeProgram, "uCubeMap"), 1);
 
   if (rotationMode) {
     rotAngle += 0.5;
