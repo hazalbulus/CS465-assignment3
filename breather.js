@@ -18,7 +18,7 @@ var phi = 0.0;
 
 var cubemapTexture;
 
-const line_count = 200;
+const line_count = 70;
 let radius = 160;
 let xRot = 110;
 let yRot = 180;
@@ -64,7 +64,7 @@ var normalMatrix, normalMatrixLoc;
 
 var tangent = vec3(1.0, 0.0, 0.0);
 
-var texSize = 64;
+var texSize = 32;
 
 var temp = new Array();
 for (var i = 0; i < texSize; i++) temp[i] = new Array();
@@ -80,7 +80,7 @@ for (var i = 0; i < texSize; i++) {
       temp[i][j] = [1, 0, 0, 1]; // Red with full opacity
     } else {
       // White color
-      temp[i][j] = [1, 1, 1, 1]; // White with full opacity
+      temp[i][j] = [1, 1, 1, 0]; // White with full opacity
     }
   }
 }
@@ -93,30 +93,68 @@ for (var i = 0; i < texSize; i++)
     for (var k = 0; k < 4; k++)
       image2[4 * texSize * i + 4 * j + k] = 255 * temp[i][j][k];
 
-function configureCubeMap() {
-  cubeMap = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeMap);
+function loadCubemap() {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
 
-  // Load each face of the cube map with the image
-  loadCubeMapFace("pos-x.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_X);
-  loadCubeMapFace("neg-x.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_X);
-  loadCubeMapFace("pos-y.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_Y);
-  loadCubeMapFace("neg-y.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_Y);
-  loadCubeMapFace("pos-z.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_Z);
-  loadCubeMapFace("neg-z.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_Z);
+  const faceInfos = [
+    {
+      target: gl.TEXTURE_CUBE_MAP_POSITIVE_X,
+      url: "pos-x.jpg",
+    },
+    {
+      target: gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
+      url: "neg-x.jpg",
+    },
+    {
+      target: gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
+      url: "pos-y.jpg",
+    },
+    {
+      target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
+      url: "neg-y.jpg",
+    },
+    {
+      target: gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
+      url: "pos-z.jpg",
+    },
+    {
+      target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
+      url: "neg-z.jpg",
+    },
+  ];
+  faceInfos.forEach((faceInfo) => {
+    const { target, url } = faceInfo;
+    // Initialize the texture to blue while it loads
+    gl.texImage2D(
+      target,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 255, 255])
+    );
 
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // Asynchronously load an image
+    const image = new Image();
+    image.src = url;
+    image.addEventListener("load", function () {
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+      gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+    });
+  });
+  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.texParameteri(
+    gl.TEXTURE_CUBE_MAP,
+    gl.TEXTURE_MIN_FILTER,
+    gl.LINEAR_MIPMAP_LINEAR
+  );
+  return texture;
 }
-
-function loadCubeMapFace(url, target) {
-  var image = new Image();
-  image.onload = function () {
-    gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-  };
-  image.src = url;
-}
-
 
 // Assuming you have a function to load textures, create a cubemap texture.
 function loadTexture(url) {
@@ -348,6 +386,8 @@ window.onload = function () {
   let gouraudRadio = document.getElementById("gouraud");
   let phongRadio = document.getElementById("phong");
 
+  cubemapTexture = loadCubemap();
+
   if (wireframeRadio) {
     wireframeRadio.addEventListener("change", function () {
       wireMode = 0;
@@ -416,7 +456,8 @@ function regenerateBreatherSurface() {
   console.log("uValue: " + uValue);
   console.log("vValue: " + vValue);
   // Load the cubemap textures
-  const donutTexture = loadTexture("sesame.jpg"); // Provide the correct path to donut.jpg
+  const donutTexture = loadTexture("donut.jpg"); // Provide the correct path to donut.jpg
+  cubemapTexture = loadCubemap();
 
   // Create the Mesh instance with the cubemap texture
   mesh = new Mesh(
@@ -528,10 +569,16 @@ function render() {
   gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
   gl.uniformMatrix3fv(normalMatrixLoc, false, flatten(normalMatrix));
 
+  cubemapTexture = loadCubemap();
+
   // Correcting the usage of activeProgram instead of program
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
-  gl.uniform1i(gl.getUniformLocation(activeProgram, "uEnvironmentMap"), 0);
+  gl.uniform1i(gl.getUniformLocation(activeProgram, "texMap"), 0);
+
+  // gl.activeTexture(gl.TEXTURE1); // Use a different texture unit than your regular textures
+  // gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
+  // gl.uniform1i(gl.getUniformLocation(activeProgram, "uCubeMap"), 1);
 
   if (rotationMode) {
     rotAngle += 0.5;
@@ -555,7 +602,7 @@ function createViewMatrix(radius, xRot, yRot, zRot) {
   return viewMatrix;
 }
 
-function configureTexture(image) {
+function configureTexture(image, texture) {
   texture = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -681,7 +728,7 @@ class Mesh {
   setupEnvironmentMapping() {
     gl.useProgram(activeProgram);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.cubemapTexture);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.texture);
     gl.uniform1i(gl.getUniformLocation(activeProgram, "uEnvironmentMap"), 0);
     gl.uniform3fv(
       gl.getUniformLocation(activeProgram, "uCameraPosition"),
@@ -822,7 +869,7 @@ class Mesh {
       gl.drawElements(gl.LINES, this.wireframe.length, gl.UNSIGNED_SHORT, 0);
     } else {
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.texture);
       gl.uniform1i(gl.getUniformLocation(program, "texture"), 0); // Set the texture uniform to the active texture index
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.triangleStripBuffer);
       gl.bufferData(
