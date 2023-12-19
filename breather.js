@@ -18,7 +18,7 @@ var phi = 0.0;
 
 var cubemapTexture;
 
-const line_count = 150;
+const line_count = 200;
 let radius = 160;
 let xRot = 110;
 let yRot = 180;
@@ -67,67 +67,98 @@ var tangent = vec3(1.0, 0.0, 0.0);
 var texSize = 64;
 
 var temp = new Array();
-for (var i = 0; i < texSize; i++)
-    temp[i] = new Array();
+for (var i = 0; i < texSize; i++) temp[i] = new Array();
 
 for (var i = 0; i < texSize; i++)
-    for (var j = 0; j < texSize; j++)
-        temp[i][j] = new Float32Array(4);
+  for (var j = 0; j < texSize; j++) temp[i][j] = new Float32Array(4);
 
 for (var i = 0; i < texSize; i++) {
-    for (var j = 0; j < texSize; j++) {
-        var isRed = (((i & 0x8) == 0) ^ ((j & 0x8) == 0));
-        if (isRed) {
-            // Red color
-            temp[i][j] = [1, 0, 0, 1]; // Red with full opacity
-        } else {
-            // White color
-            temp[i][j] = [1, 1, 1, 1]; // White with full opacity
-        }
+  for (var j = 0; j < texSize; j++) {
+    var isRed = ((i & 0x8) == 0) ^ ((j & 0x8) == 0);
+    if (isRed) {
+      // Red color
+      temp[i][j] = [1, 0, 0, 1]; // Red with full opacity
+    } else {
+      // White color
+      temp[i][j] = [1, 1, 1, 1]; // White with full opacity
     }
+  }
 }
 
 // Convert floats to ubytes for texture
 var image2 = new Uint8Array(4 * texSize * texSize);
 
-for(var i = 0; i < texSize; i++)
-    for(var j = 0; j < texSize; j++)
-       for(var k = 0; k < 4; k++)
-            image2[4 * texSize * i + 4 * j + k] = 255 * temp[i][j][k];
+for (var i = 0; i < texSize; i++)
+  for (var j = 0; j < texSize; j++)
+    for (var k = 0; k < 4; k++)
+      image2[4 * texSize * i + 4 * j + k] = 255 * temp[i][j][k];
+
+function configureCubeMap() {
+  cubeMap = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeMap);
+
+  // Load each face of the cube map with the image
+  loadCubeMapFace("pos-x.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_X);
+  loadCubeMapFace("neg-x.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_X);
+  loadCubeMapFace("pos-y.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_Y);
+  loadCubeMapFace("neg-y.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_Y);
+  loadCubeMapFace("pos-z.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_Z);
+  loadCubeMapFace("neg-z.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_Z);
+
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+}
+
+function loadCubeMapFace(url, target) {
+  var image = new Image();
+  image.onload = function () {
+    gl.texImage2D(target, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  };
+  image.src = url;
+}
+
 
 // Assuming you have a function to load textures, create a cubemap texture.
-function loadCubemap() {
-  // URLs of the images for each face of the cubemap
-  const urls = [
-    "donut.jpg",
-    "donut.jpg",
-    "donut.jpg",
-    "donut.jpg",
-    "donut.jpg",
-    "donut.jpg",
-  ];
+function loadTexture(url) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
 
-  const cubemapTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemapTexture);
-
-  urls.forEach((url, index) => {
-    const target = gl.TEXTURE_CUBE_MAP_POSITIVE_X + index;
-    initializeTextureForCubemapFace(gl, target); // Define this function to initialize the texture face
-    loadImageForCubemapFace(gl, url, target, cubemapTexture); // Define this function to load the image for the texture face
-  });
-
-  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-  gl.texParameteri(
-    gl.TEXTURE_CUBE_MAP,
-    gl.TEXTURE_MIN_FILTER,
-    gl.LINEAR
+  const level = 0;
+  const internalFormat = gl.RGBA;
+  const width = 1;
+  const height = 1;
+  const border = 0;
+  const srcFormat = gl.RGBA;
+  const srcType = gl.UNSIGNED_BYTE;
+  const pixel = new Uint8Array([0, 0, 255, 255]); // opaque blue
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    level,
+    internalFormat,
+    width,
+    height,
+    border,
+    srcFormat,
+    srcType,
+    pixel
   );
-  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  // gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  // gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  // gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
 
-  return cubemapTexture;
+  const image = new Image();
+  image.onload = function () {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      level,
+      internalFormat,
+      srcFormat,
+      srcType,
+      image
+    );
+    gl.generateMipmap(gl.TEXTURE_2D);
+  };
+  image.src = url;
+
+  return texture;
 }
 
 function initializeTextureForCubemapFace(gl, target) {
@@ -385,12 +416,12 @@ function regenerateBreatherSurface() {
   console.log("uValue: " + uValue);
   console.log("vValue: " + vValue);
   // Load the cubemap textures
-  cubemapTexture = loadCubemap();
+  const donutTexture = loadTexture("sesame.jpg"); // Provide the correct path to donut.jpg
 
   // Create the Mesh instance with the cubemap texture
   mesh = new Mesh(
     breatherSurface(line_count, line_count, aa, uValue, vValue),
-    cubemapTexture
+    donutTexture
   );
   mesh.setScale(magnitude);
   mesh.setWireMode(wireMode);
@@ -563,9 +594,9 @@ function breatherSurface(N, M, aa, uValue, vValue) {
   let uStep = (uMax - uMin) / N;
   let vStep = (vMax - vMin) / M;
 
-  for (let i = 0; i <= N; i++) {
+  for (let i = 0; i <= N; i = i + 1) {
     let u = uMin + i * uStep;
-    for (let j = 0; j <= M; j++) {
+    for (let j = 0; j <= M; j = j + 1) {
       let v = vMin + j * vStep;
 
       let cosh_au = Math.cosh(aa * u);
@@ -610,11 +641,11 @@ function breatherSurface(N, M, aa, uValue, vValue) {
 
 // Mesh object
 class Mesh {
-  constructor(data, cubemapTexture) {
+  constructor(data, texture) {
     this.vertices = data[0];
     this.normals = data[1];
     this.texCoords = data[2];
-    this.cubemapTexture = cubemapTexture;
+    this.texture = texture;
     this.translation = vec3(0, 0, 0);
     this.rotation = vec3(0, 0, 0);
     this.scale = 1;
@@ -790,6 +821,9 @@ class Mesh {
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.wireframe, gl.STATIC_DRAW);
       gl.drawElements(gl.LINES, this.wireframe.length, gl.UNSIGNED_SHORT, 0);
     } else {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      gl.uniform1i(gl.getUniformLocation(program, "texture"), 0); // Set the texture uniform to the active texture index
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.triangleStripBuffer);
       gl.bufferData(
         gl.ELEMENT_ARRAY_BUFFER,
